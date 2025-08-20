@@ -42,9 +42,13 @@
   // Processor for folder sharing operations
   self.NSQueue.registerProcessor('dropbox-sharing', async (item, ctx) => {
     const token = ctx && ctx.token;
-    if (!token) { console.warn('SW Dropbox Sharing: missing token'); return false; }
+    if (!token) { 
+      console.warn('SW Dropbox Sharing: missing token'); 
+      return { success: false, error: 'Missing token' }; 
+    }
     
     const { type, folderPath, email, sharedFolderId } = item.payload;
+    console.log('SW Dropbox Sharing: Processing', { type, folderPath, email, sharedFolderId });
     
     try {
       let url, body, result;
@@ -56,7 +60,7 @@
             path: folderPath,
             access_level: { '.tag': 'editor' }
           });
-          console.log('SW Dropbox Sharing: share_folder', { folderPath });
+          console.log('SW Dropbox Sharing: share_folder request', { folderPath, body });
           break;
           
         case 'invite':
@@ -72,7 +76,7 @@
               access_level: { '.tag': 'editor' }
             }]
           });
-          console.log('SW Dropbox Sharing: invite', { sharedFolderId, email });
+          console.log('SW Dropbox Sharing: invite request', { sharedFolderId, email, body });
           break;
           
         case 'remove':
@@ -86,7 +90,7 @@
             member: { '.tag': 'email', email },
             leave_a_copy: false
           });
-          console.log('SW Dropbox Sharing: remove', { sharedFolderId, email });
+          console.log('SW Dropbox Sharing: remove request', { sharedFolderId, email, body });
           break;
           
         default:
@@ -94,6 +98,7 @@
           return { success: false, error: 'Unknown operation type' };
       }
       
+      console.log('SW Dropbox Sharing: Making API call to', url);
       const resp = await fetch(url, {
         method: 'POST',
         headers: {
@@ -103,17 +108,20 @@
         body,
       });
       
+      console.log('SW Dropbox Sharing: API response status', resp.status);
+      
       if (!resp.ok) {
         const text = await resp.text().catch(() => '');
         console.error('SW Dropbox Sharing: operation failed', resp.status, text);
-        return { success: false, error: text, status: resp.status };
+        return { success: false, error: `API error ${resp.status}: ${text}`, status: resp.status };
       }
       
       result = await resp.json();
-      console.log('SW Dropbox Sharing: operation successful', type, result);
+      console.log('SW Dropbox Sharing: API response data', result);
       
       // Return the shared_folder_id for share_folder operations
       if (type === 'share_folder' && result.shared_folder_id) {
+        console.log('SW Dropbox Sharing: Returning shared_folder_id', result.shared_folder_id);
         return { success: true, sharedFolderId: result.shared_folder_id };
       }
       

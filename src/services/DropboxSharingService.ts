@@ -19,21 +19,26 @@ export class DropboxSharingService {
       return list.sharedFolderId;
     }
 
-    const result = await QueueClient.getInstance().enqueue('dropbox-sharing', list.id, {
-      type: 'share_folder',
-      folderPath
-    }) as any;
+    try {
+      const result = await QueueClient.getInstance().enqueue('dropbox-sharing', list.id, {
+        type: 'share_folder',
+        folderPath
+      });
 
-    if (!result || !result.sharedFolderId) {
-      throw new Error('Failed to get shared folder ID');
+      if (!result || !result.sharedFolderId) {
+        throw new Error('Failed to get shared folder ID from share operation');
+      }
+
+      console.log('🔗 DropboxSharingService: Folder shared successfully, ID:', result.sharedFolderId);
+      
+      // Update the list with the shared folder ID
+      await this.updateListWithSharedFolderId(list.id, result.sharedFolderId);
+      
+      return result.sharedFolderId;
+    } catch (error) {
+      console.error('🔗 DropboxSharingService: Error sharing folder:', error);
+      throw error;
     }
-
-    console.log('🔗 DropboxSharingService: Folder shared successfully, ID:', result.sharedFolderId);
-    
-    // Update the list with the shared folder ID
-    await this.updateListWithSharedFolderId(list.id, result.sharedFolderId);
-    
-    return result.sharedFolderId;
   }
 
   async inviteUser(list: ShoppingList, folderPath: string, email: string): Promise<void> {
@@ -42,17 +47,19 @@ export class DropboxSharingService {
     // Ensure folder is shared first
     const sharedFolderId = await this.shareFolder(list, folderPath);
 
-    const result = await QueueClient.getInstance().enqueue('dropbox-sharing', list.id, {
-      type: 'invite',
-      sharedFolderId,
-      email
-    }) as any;
+    try {
+      const result = await QueueClient.getInstance().enqueue('dropbox-sharing', list.id, {
+        type: 'invite',
+        sharedFolderId,
+        email
+      });
 
-    if (!result || result.success === false) {
-      throw new Error(result?.error || 'Failed to invite user');
+      // Result should be truthy for success, error will be thrown by QueueClient
+      console.log('🔗 DropboxSharingService: User invited successfully');
+    } catch (error) {
+      console.error('🔗 DropboxSharingService: Error inviting user:', error);
+      throw error;
     }
-
-    console.log('🔗 DropboxSharingService: User invited successfully');
   }
 
   async removeUser(list: ShoppingList, email: string): Promise<void> {
@@ -62,17 +69,19 @@ export class DropboxSharingService {
       throw new Error('List is not shared');
     }
 
-    const result = await QueueClient.getInstance().enqueue('dropbox-sharing', list.id, {
-      type: 'remove',
-      sharedFolderId: list.sharedFolderId,
-      email
-    }) as any;
+    try {
+      const result = await QueueClient.getInstance().enqueue('dropbox-sharing', list.id, {
+        type: 'remove',
+        sharedFolderId: list.sharedFolderId,
+        email
+      });
 
-    if (!result || result.success === false) {
-      throw new Error(result?.error || 'Failed to remove user');
+      // Result should be truthy for success, error will be thrown by QueueClient
+      console.log('🔗 DropboxSharingService: User removed successfully');
+    } catch (error) {
+      console.error('🔗 DropboxSharingService: Error removing user:', error);
+      throw error;
     }
-
-    console.log('🔗 DropboxSharingService: User removed successfully');
   }
 
   private async updateListWithSharedFolderId(listId: string, sharedFolderId: string): Promise<void> {

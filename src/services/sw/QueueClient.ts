@@ -24,20 +24,69 @@ export class QueueClient {
     });
   }
 
-  async enqueue(queueName: string, resourceKey: string, payload: any): Promise<boolean> {
+  async enqueue(queueName: string, resourceKey: string, payload: any): Promise<any> {
     try {
       const sw = await this.getActiveSW();
-      if (!sw) { console.warn('QueueClient: no active SW'); return false; }
+      if (!sw) { 
+        console.warn('QueueClient: no active SW'); 
+        throw new Error('No active service worker');
+      }
+      
+      // Set up channel for immediate response
       const channel = new MessageChannel();
-      const result = new Promise<boolean>((resolve) => {
+      const enqueueResult = new Promise<boolean>((resolve) => {
         channel.port1.onmessage = (e) => resolve(!!e.data?.ok);
       });
+      
+      // Set up listener for processing result with timeout
+      const resultPromise = new Promise<any>((resolve, reject) => {
+        let resolved = false;
+        
+        const handleMessage = (event: MessageEvent) => {
+          if (resolved) return;
+          
+          if (event.data?.type === 'QUEUE_EVENT' && 
+              event.data?.queueName === queueName && 
+              event.data?.resourceKey === resourceKey) {
+            
+            if (event.data.event === 'processed') {
+              resolved = true;
+              navigator.serviceWorker?.removeEventListener('message', handleMessage);
+              resolve(event.data.result || true);
+            } else if (event.data.event === 'error') {
+              resolved = true;
+              navigator.serviceWorker?.removeEventListener('message', handleMessage);
+              reject(new Error(event.data.error || 'Processing failed'));
+            }
+          }
+        };
+        
+        navigator.serviceWorker?.addEventListener('message', handleMessage);
+        
+        // Timeout after 30 seconds
+        setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            navigator.serviceWorker?.removeEventListener('message', handleMessage);
+            reject(new Error('Operation timeout'));
+          }
+        }, 30000);
+      });
+      
       console.log('QueueClient: enqueue', { queueName, resourceKey, hasPayload: !!payload });
       sw.postMessage({ type: 'QUEUE_ENQUEUE', queueName, resourceKey, payload }, [channel.port2]);
-      return result;
+      
+      // Wait for enqueue confirmation
+      const enqueued = await enqueueResult;
+      if (!enqueued) {
+        throw new Error('Failed to enqueue item');
+      }
+      
+      // Wait for processing result
+      return await resultPromise;
     } catch (e) {
       console.error('QueueClient: enqueue error', e);
-      return false;
+      throw e;
     }
   }
 

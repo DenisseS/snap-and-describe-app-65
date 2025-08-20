@@ -157,23 +157,39 @@
         await postToAllClients({ event: 'processing', queueName: item.queueName, resourceKey: item.resourceKey });
 
         const processor = PROCESSORS.get(item.queueName);
+        let result = null;
         let ok = false;
+        
         if (processor) {
           try {
-            ok = await processor(item, { token: TOKEN });
+            console.log('SW Queue: calling processor for', item.queueName);
+            result = await processor(item, { token: TOKEN });
+            console.log('SW Queue: processor result', result);
+            
+            // Handle different result types
+            if (typeof result === 'boolean') {
+              ok = result;
+            } else if (result && typeof result === 'object') {
+              ok = result.success !== false;
+            } else {
+              ok = !!result;
+            }
           } catch (e) {
             console.error('SW Queue: Processor error', e);
             ok = false;
+            result = { success: false, error: e.message };
           }
         } else {
           console.warn('SW Queue: No processor for queue', item.queueName);
+          ok = false;
+          result = { success: false, error: 'No processor found' };
         }
 
         if (!ok) {
-          console.warn('SW Queue: item failed', { queueName: item.queueName, resourceKey: item.resourceKey });
+          console.warn('SW Queue: item failed', { queueName: item.queueName, resourceKey: item.resourceKey, result });
           item.status = 'error';
           await idbPut(item);
-          await postToAllClients({ event: 'error', queueName: item.queueName, resourceKey: item.resourceKey });
+          await postToAllClients({ event: 'error', queueName: item.queueName, resourceKey: item.resourceKey, error: result?.error });
           break;
         }
 
@@ -185,7 +201,14 @@
         } else {
           await idbDelete(item.id);
         }
-        await postToAllClients({ event: 'processed', queueName: item.queueName, resourceKey: item.resourceKey });
+        
+        // Send result back to clients with the actual result data
+        await postToAllClients({ 
+          event: 'processed', 
+          queueName: item.queueName, 
+          resourceKey: item.resourceKey,
+          result: result 
+        });
       }
     } finally {
       const drained = (await idbGetAll()).filter(e => e.status === 'pending').length === 0;
