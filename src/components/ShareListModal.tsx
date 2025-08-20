@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { QueueClient } from '@/services/sw/QueueClient';
+import { DropboxSharingService } from '@/services/DropboxSharingService';
 import { ShoppingList } from '@/types/shoppingList';
 
 interface ShareListModalProps {
@@ -67,20 +67,7 @@ const ShareListModal: React.FC<ShareListModalProps> = ({
     setIsInviting(true);
     
     try {
-      // First share the folder if not already shared
-      if (!isShared) {
-        QueueClient.getInstance().enqueue('dropbox-sharing', list.id, {
-          type: 'share_folder',
-          folderPath
-        });
-      }
-      
-      // Then add the member
-      QueueClient.getInstance().enqueue('dropbox-sharing', list.id, {
-        type: 'invite',
-        folderPath,
-        email: newEmail.trim()
-      });
+      await DropboxSharingService.getInstance().inviteUser(list, folderPath, newEmail.trim());
 
       setNewEmail('');
       toast({
@@ -91,7 +78,7 @@ const ShareListModal: React.FC<ShareListModalProps> = ({
       console.error('🔗 ShareListModal: Error inviting user:', error);
       toast({
         title: t('error', 'Error'),
-        description: t('failedToInvite', 'No se pudo enviar la invitación'),
+        description: error instanceof Error ? error.message : t('failedToInvite', 'No se pudo enviar la invitación'),
         variant: 'destructive'
       });
     } finally {
@@ -104,11 +91,7 @@ const ShareListModal: React.FC<ShareListModalProps> = ({
     setRemovingEmail(email);
     
     try {
-      QueueClient.getInstance().enqueue('dropbox-sharing', list.id, {
-        type: 'remove',
-        folderPath,
-        email
-      });
+      await DropboxSharingService.getInstance().removeUser(list, email);
 
       toast({
         title: t('userRemoved', 'Usuario eliminado'),
@@ -118,7 +101,7 @@ const ShareListModal: React.FC<ShareListModalProps> = ({
       console.error('🔗 ShareListModal: Error removing user:', error);
       toast({
         title: t('error', 'Error'),
-        description: t('failedToRemoveUser', 'No se pudo eliminar el usuario'),
+        description: error instanceof Error ? error.message : t('failedToRemoveUser', 'No se pudo eliminar el usuario'),
         variant: 'destructive'
       });
     } finally {

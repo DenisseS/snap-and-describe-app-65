@@ -44,10 +44,10 @@
     const token = ctx && ctx.token;
     if (!token) { console.warn('SW Dropbox Sharing: missing token'); return false; }
     
-    const { type, folderPath, email } = item.payload;
+    const { type, folderPath, email, sharedFolderId } = item.payload;
     
     try {
-      let url, body;
+      let url, body, result;
       
       switch (type) {
         case 'share_folder':
@@ -56,34 +56,44 @@
             path: folderPath,
             access_level: { '.tag': 'editor' }
           });
+          console.log('SW Dropbox Sharing: share_folder', { folderPath });
           break;
           
         case 'invite':
+          if (!sharedFolderId) {
+            console.error('SW Dropbox Sharing: missing sharedFolderId for invite');
+            return { success: false, error: 'Missing shared folder ID' };
+          }
           url = 'https://api.dropboxapi.com/2/sharing/add_folder_member';
           body = JSON.stringify({
-            shared_folder_id: folderPath,
+            shared_folder_id: sharedFolderId,
             members: [{
               member: { '.tag': 'email', email },
               access_level: { '.tag': 'editor' }
             }]
           });
+          console.log('SW Dropbox Sharing: invite', { sharedFolderId, email });
           break;
           
         case 'remove':
+          if (!sharedFolderId) {
+            console.error('SW Dropbox Sharing: missing sharedFolderId for remove');
+            return { success: false, error: 'Missing shared folder ID' };
+          }
           url = 'https://api.dropboxapi.com/2/sharing/remove_folder_member';
           body = JSON.stringify({
-            shared_folder_id: folderPath,
+            shared_folder_id: sharedFolderId,
             member: { '.tag': 'email', email },
             leave_a_copy: false
           });
+          console.log('SW Dropbox Sharing: remove', { sharedFolderId, email });
           break;
           
         default:
           console.error('SW Dropbox Sharing: unknown type', type);
-          return false;
+          return { success: false, error: 'Unknown operation type' };
       }
       
-      console.log('SW Dropbox Sharing:', type, { folderPath, email });
       const resp = await fetch(url, {
         method: 'POST',
         headers: {
@@ -96,14 +106,21 @@
       if (!resp.ok) {
         const text = await resp.text().catch(() => '');
         console.error('SW Dropbox Sharing: operation failed', resp.status, text);
-        return false;
+        return { success: false, error: text, status: resp.status };
       }
       
-      console.log('SW Dropbox Sharing: operation successful');
-      return true;
+      result = await resp.json();
+      console.log('SW Dropbox Sharing: operation successful', type, result);
+      
+      // Return the shared_folder_id for share_folder operations
+      if (type === 'share_folder' && result.shared_folder_id) {
+        return { success: true, sharedFolderId: result.shared_folder_id };
+      }
+      
+      return { success: true };
     } catch (e) {
       console.error('SW Dropbox Sharing: error', e);
-      return false;
+      return { success: false, error: e.message };
     }
   });
 })();

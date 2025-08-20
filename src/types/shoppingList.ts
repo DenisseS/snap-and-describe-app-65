@@ -25,6 +25,7 @@ export interface ShoppingList {
   // Sharing fields
   origin?: 'local' | 'remote';
   sharedWith?: string[]; // emails of people shared with (only on owner's lists)
+  sharedFolderId?: string; // Dropbox shared_folder_id for sharing operations
   syncRef?: {
     path: string;
     fileId?: string;
@@ -42,6 +43,7 @@ export interface ShoppingListData {
   // Sharing fields (inherited from ShoppingList)
   origin?: 'local' | 'remote';
   sharedWith?: string[];
+  sharedFolderId?: string; // Dropbox shared_folder_id for sharing operations
   syncRef?: {
     path: string;
     fileId?: string;
