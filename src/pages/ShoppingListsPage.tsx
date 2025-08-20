@@ -1,10 +1,12 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Plus, ShoppingCart, Calendar, Trash2 } from 'lucide-react';
 import Layout from '@/components/Layout';
 import LoginSuggestionBanner from '@/components/LoginSuggestionBanner';
 import BaseEditModal from '@/components/BaseEditModal';
+import RemoteListDeletedModal from '@/components/RemoteListDeletedModal';
+import UnlinkListModal from '@/components/UnlinkListModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -16,10 +18,12 @@ import { DataState } from '@/types/userData';
 import AuthExplanationModal from "@/components/AuthExplanationModal";
 import DragDropShoppingListsPage from '@/components/DragDropShoppingListsPage';
 import SyncStatusIndicator from '@/components/SyncStatusIndicator';
+import { useToast } from '@/hooks/use-toast';
 
 const ShoppingListsPage: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const { authState, sessionService } = useAuthentication();
   const { lists, state, isSyncing, createList, deleteList, reorderLists } = useShoppingLists();
   
@@ -29,10 +33,35 @@ const ShoppingListsPage: React.FC = () => {
   const [newListName, setNewListName] = useState('');
   const [newListDescription, setNewListDescription] = useState('');
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  
+  // Remote list deletion modal states
+  const [showRemoteListDeletedModal, setShowRemoteListDeletedModal] = useState(false);
+  const [deletedListInfo, setDeletedListInfo] = useState<{ listId: string; listName: string } | null>(null);
+  
+  // Unlink modal states
+  const [showUnlinkModal, setShowUnlinkModal] = useState(false);
+  const [unlinkListInfo, setUnlinkListInfo] = useState<{ listId: string; listName: string } | null>(null);
+  const [isUnlinking, setIsUnlinking] = useState(false);
 
   const isAuthenticated = authState === AuthState.AUTHENTICATED;
   const isLoading = state === DataState.LOADING;
   const isProcessing = state === DataState.PROCESSING;
+
+  // Listen for remote list deletion events
+  useEffect(() => {
+    const handleRemoteListDeleted = (event: CustomEvent) => {
+      const { listId, listName } = event.detail;
+      console.log('🛒 ShoppingListsPage: Remote list deleted event received:', { listId, listName });
+      setDeletedListInfo({ listId, listName });
+      setShowRemoteListDeletedModal(true);
+    };
+
+    window.addEventListener('remoteListDeleted', handleRemoteListDeleted as EventListener);
+    
+    return () => {
+      window.removeEventListener('remoteListDeleted', handleRemoteListDeleted as EventListener);
+    };
+  }, []);
 
   const handleCreateList = useCallback(async () => {
     if (!newListName.trim()) return;
@@ -54,8 +83,18 @@ const ShoppingListsPage: React.FC = () => {
     }
   }, [newListName, newListDescription, createList, navigate]);
 
-  const handleDeleteList = useCallback(async (listId: string) => {
-    console.log('🛒 ShoppingListsPage: Deleting list:', listId);
+  const handleDeleteList = useCallback(async (listId: string, isRemoteList = false) => {
+    const list = lists[listId];
+    
+    // If it's a remote list, show unlink modal instead
+    if (isRemoteList || list?.origin === 'remote') {
+      console.log('🛒 ShoppingListsPage: Showing unlink modal for remote list:', listId);
+      setUnlinkListInfo({ listId, listName: list?.name || 'Lista' });
+      setShowUnlinkModal(true);
+      return;
+    }
+
+    console.log('🛒 ShoppingListsPage: Deleting local list:', listId);
     setIsDeleting(listId);
     
     try {
@@ -78,7 +117,7 @@ const ShoppingListsPage: React.FC = () => {
     } finally {
       setIsDeleting(null);
     }
-  }, [deleteList, sessionService]);
+  }, [deleteList, sessionService, lists]);
 
   const handleListClick = useCallback((listId: string) => {
     console.log('🛒 ShoppingListsPage: Navigating to list:', listId);
@@ -97,6 +136,60 @@ const ShoppingListsPage: React.FC = () => {
     console.log('🛒 ShoppingListsPage: Reordering lists:', listIds);
     await reorderLists(listIds);
   }, [reorderLists]);
+
+  const handleRemoteListDeletedConfirm = useCallback(async () => {
+    if (!deletedListInfo) return;
+    
+    console.log('🛒 ShoppingListsPage: Confirming removal of deleted remote list:', deletedListInfo.listId);
+    
+    try {
+      const success = await deleteList(deletedListInfo.listId);
+      if (success) {
+        toast({
+          title: t('listRemoved', 'Lista removida'),
+          description: t('remoteListRemovedSuccess', 'La lista ha sido removida de tu perfil'),
+        });
+      }
+    } catch (error) {
+      console.error('🛒 ShoppingListsPage: Error removing deleted remote list:', error);
+      toast({
+        title: t('error', 'Error'),
+        description: t('failedToRemoveList', 'No se pudo remover la lista'),
+        variant: 'destructive'
+      });
+    } finally {
+      setShowRemoteListDeletedModal(false);
+      setDeletedListInfo(null);
+    }
+  }, [deletedListInfo, deleteList, toast, t]);
+
+  const handleUnlinkList = useCallback(async () => {
+    if (!unlinkListInfo) return;
+    
+    console.log('🛒 ShoppingListsPage: Unlinking remote list:', unlinkListInfo.listId);
+    setIsUnlinking(true);
+    
+    try {
+      const success = await deleteList(unlinkListInfo.listId);
+      if (success) {
+        toast({
+          title: t('listUnlinked', 'Lista desvinculada'),
+          description: t('remoteListUnlinkedSuccess', 'La lista ha sido desvinculada de tu perfil'),
+        });
+        setShowUnlinkModal(false);
+        setUnlinkListInfo(null);
+      }
+    } catch (error) {
+      console.error('🛒 ShoppingListsPage: Error unlinking remote list:', error);
+      toast({
+        title: t('error', 'Error'),
+        description: t('failedToUnlinkList', 'No se pudo desvincular la lista'),
+        variant: 'destructive'
+      });
+    } finally {
+      setIsUnlinking(false);
+    }
+  }, [unlinkListInfo, deleteList, toast, t]);
 
   const formatDate = (dateString: string) => {
     try {
@@ -208,6 +301,27 @@ const ShoppingListsPage: React.FC = () => {
         <AuthExplanationModal
           isOpen={showAuthModal}
           onClose={() => setShowAuthModal(false)}
+        />
+
+        <RemoteListDeletedModal
+          isOpen={showRemoteListDeletedModal}
+          onClose={() => {
+            setShowRemoteListDeletedModal(false);
+            setDeletedListInfo(null);
+          }}
+          listName={deletedListInfo?.listName || ''}
+          onConfirm={handleRemoteListDeletedConfirm}
+        />
+
+        <UnlinkListModal
+          isOpen={showUnlinkModal}
+          onClose={() => {
+            setShowUnlinkModal(false);
+            setUnlinkListInfo(null);
+          }}
+          listName={unlinkListInfo?.listName || ''}
+          onConfirm={handleUnlinkList}
+          isUnlinking={isUnlinking}
         />
       </div>
     </Layout>

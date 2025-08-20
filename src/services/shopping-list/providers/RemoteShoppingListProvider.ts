@@ -178,6 +178,30 @@ export class RemoteShoppingListProvider extends GenericShoppingListProvider {
       if (result.syncHandler) {
         result.syncHandler(
           async (updatedData) => {
+            // Handle case when remote list was deleted (409/403 errors)
+            if (!updatedData) {
+              console.warn(`🛒 RemoteProvider: Remote list ${listId} was deleted or is inaccessible`);
+              
+              // If this is a remote-origin list, show deletion modal and remove from local
+              if (listMeta?.origin === 'remote') {
+                // Emit event for UI to show "list deleted" modal
+                window.dispatchEvent(new CustomEvent('remoteListDeleted', {
+                  detail: { listId, listName: listMeta.name }
+                }));
+                
+                // Remove from local cache and metadata
+                const localKey = `${SHOPPING_LIST_CACHE_KEYS.LOCAL_LIST_DATA_PREFIX}${listId}`;
+                this.sessionService.clearCache(localKey);
+                
+                const updatedMetadata = { ...metadata };
+                delete updatedMetadata.lists[listId];
+                await this.saveListsDetails(updatedMetadata);
+                
+                onSyncStatusChange(false);
+                return;
+              }
+            }
+
             console.log(`🛒 RemoteProvider: List ${listId} updated from remote sync`);
             const localKey = `${SHOPPING_LIST_CACHE_KEYS.LOCAL_LIST_DATA_PREFIX}${listId}`;
             const localData = this.sessionService.getLocalFile(localKey);
@@ -231,6 +255,30 @@ export class RemoteShoppingListProvider extends GenericShoppingListProvider {
       }
     } catch (error) {
       console.error(`🛒 RemoteProvider: Error in list sync for ${listId}:`, error);
+      
+      // Check if error indicates deleted/inaccessible remote list
+      if (error instanceof Error && (error.message.includes('409') || error.message.includes('403'))) {
+        const metadata = await this.getListsDetails();
+        const listMeta = metadata.lists[listId];
+        
+        if (listMeta?.origin === 'remote') {
+          console.warn(`🛒 RemoteProvider: Remote list ${listId} is inaccessible (403/409)`);
+          
+          // Emit event for UI to show "list deleted" modal
+          window.dispatchEvent(new CustomEvent('remoteListDeleted', {
+            detail: { listId, listName: listMeta.name }
+          }));
+          
+          // Remove from local cache and metadata
+          const localKey = `${SHOPPING_LIST_CACHE_KEYS.LOCAL_LIST_DATA_PREFIX}${listId}`;
+          this.sessionService.clearCache(localKey);
+          
+          const updatedMetadata = { ...metadata };
+          delete updatedMetadata.lists[listId];
+          await this.saveListsDetails(updatedMetadata);
+        }
+      }
+      
       onSyncStatusChange(false);
     }
   }
@@ -254,7 +302,17 @@ export class RemoteShoppingListProvider extends GenericShoppingListProvider {
     const localKey = `${SHOPPING_LIST_CACHE_KEYS.LOCAL_LIST_DATA_PREFIX}${listId}`;
     this.sessionService.setLocalFile(localKey, data);
 
-    // Create folder first, then file
+    // Get metadata to check if it's a remote list
+    const metadata = await this.getListsDetails();
+    const listMeta = metadata.lists[listId];
+    
+    if (listMeta?.origin === 'remote' && listMeta.syncRef?.path) {
+      // For remote lists, don't create new files, they should already exist
+      console.log(`🛒 RemoteProvider: Skipping file creation for remote list ${listId}`);
+      return;
+    }
+
+    // Create folder first, then file for local lists
     const folderPath = this.resolveListFolderPath(listId);
     const filePath = this.resolveListPath(listId);
     

@@ -15,9 +15,10 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ShoppingCart, Calendar, Trash2, GripVertical } from 'lucide-react';
+import { ShoppingCart, Calendar, Trash2, GripVertical, Share2, Users, Unlink } from 'lucide-react';
 import { ShoppingList } from '@/types/shoppingList';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useTranslation } from 'react-i18next';
 import useDndSensors from '@/hooks/useDndSensors';
@@ -100,7 +101,21 @@ const SortableListItem: React.FC<SortableListItemProps> = ({
           className="flex-1 cursor-pointer"
           onClick={() => onListClick(listId)}
         >
-          <h3 className="font-semibold text-gray-900 mb-1">{list.name}</h3>
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="font-semibold text-gray-900">{list.name}</h3>
+            {list.origin === 'remote' && (
+              <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700">
+                <Users className="h-3 w-3 mr-1" />
+                {t('remote', 'Remota')}
+              </Badge>
+            )}
+            {list.sharedWith && list.sharedWith.length > 0 && (
+              <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">
+                <Share2 className="h-3 w-3 mr-1" />
+                {t('shared', 'Compartida')}
+              </Badge>
+            )}
+          </div>
           {list.description && (
             <p className="text-sm text-gray-600 mb-2">{list.description}</p>
           )}
@@ -141,21 +156,53 @@ const SortableListItem: React.FC<SortableListItemProps> = ({
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>{t('deleteList', 'Eliminar Lista')}</AlertDialogTitle>
+                <AlertDialogTitle className="flex items-center gap-2">
+                  {list.origin === 'remote' ? (
+                    <>
+                      <Unlink className="h-5 w-5" />
+                      {t('unlinkList', 'Desvincular Lista')}
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-5 w-5" />
+                      {t('deleteList', 'Eliminar Lista')}
+                    </>
+                  )}
+                </AlertDialogTitle>
                 <AlertDialogDescription>
-                  {t('deleteListConfirmation', '¿Estás seguro de que deseas eliminar esta lista de compras? Esta acción no se puede deshacer.')}
-                  <br />
-                  <br />
-                  <strong>{list.name}</strong>
+                  {list.origin === 'remote' ? (
+                    <>
+                      {t('unlinkListConfirmation', '¿Estás seguro de que quieres desvincular "{listName}" de tu perfil?', { listName: list.name })}
+                      <br />
+                      <br />
+                      <span className="text-yellow-700 bg-yellow-50 p-2 rounded text-sm block">
+                        {t('unlinkListWarning', 'Esta acción no elimina la lista original, solo quita la visibilidad en tu perfil. Tendrás que solicitar un nuevo enlace si quieres verla nuevamente.')}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      {t('deleteListConfirmation', '¿Estás seguro de que deseas eliminar esta lista de compras? Esta acción no se puede deshacer.')}
+                      <br />
+                      <br />
+                      <strong>{list.name}</strong>
+                    </>
+                  )}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>{t('cancel', 'Cancelar')}</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={() => onDeleteList(listId)}
-                  className="bg-red-600 hover:bg-red-700"
+                  className={list.origin === 'remote' ? "bg-amber-600 hover:bg-amber-700" : "bg-red-600 hover:bg-red-700"}
                 >
-                  {t('delete', 'Eliminar')}
+                  {list.origin === 'remote' ? (
+                    <>
+                      <Unlink className="h-4 w-4 mr-2" />
+                      {t('unlinkConfirm', 'Sí, Desvincular')}
+                    </>
+                  ) : (
+                    t('delete', 'Eliminar')
+                  )}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

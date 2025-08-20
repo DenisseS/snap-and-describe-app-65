@@ -85,13 +85,21 @@ export class DropboxSharingService {
   }
 
   private async updateListWithSharedFolderId(listId: string, sharedFolderId: string): Promise<void> {
-    // This should integrate with your shopping list service to update the list
-    // For now, we'll emit an event that the UI can listen to
-    console.log('🔗 DropboxSharingService: Should update list', listId, 'with sharedFolderId:', sharedFolderId);
+    console.log('🔗 DropboxSharingService: Updating list', listId, 'with sharedFolderId:', sharedFolderId);
     
-    // Emit custom event for the UI to catch
-    window.dispatchEvent(new CustomEvent('shoppingListSharedFolderUpdated', {
-      detail: { listId, sharedFolderId }
-    }));
+    // Import ShoppingListService dynamically to avoid circular dependency
+    const { default: ShoppingListService } = await import('./shopping-list/ShoppingListService');
+    const service = ShoppingListService.getInstance();
+    
+    try {
+      await service.updateShoppingList(listId, { sharedFolderId });
+      console.log('🔗 DropboxSharingService: Successfully updated list with sharedFolderId');
+    } catch (error) {
+      console.error('🔗 DropboxSharingService: Failed to update list with sharedFolderId:', error);
+      // Emit custom event as fallback for the UI to catch
+      window.dispatchEvent(new CustomEvent('shoppingListSharedFolderUpdated', {
+        detail: { listId, sharedFolderId }
+      }));
+    }
   }
 }

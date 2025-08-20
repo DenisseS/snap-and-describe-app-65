@@ -205,8 +205,8 @@ export const useShoppingLists = (): UseShoppingListsReturn => {
       // Update local state optimistically
       setLists(prev => ({ ...prev, [remoteListInfo.id]: remoteList }));
 
-      // Save to backend via service
-      const success = await service.updateShoppingList(remoteListInfo.id, remoteList);
+      // Save to backend via service using the new addRemoteList method
+      const success = await service.addRemoteList(remoteListInfo);
       
       if (!success) {
         // Remove from local state if backend failed

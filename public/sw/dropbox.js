@@ -122,7 +122,7 @@
       // Return the shared_folder_id for share_folder operations
       if (type === 'share_folder' && result.shared_folder_id) {
         console.log('SW Dropbox Sharing: Returning shared_folder_id', result.shared_folder_id);
-        return { success: true, sharedFolderId: result.shared_folder_id };
+        return { sharedFolderId: result.shared_folder_id };
       }
       
       return { success: true };

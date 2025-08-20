@@ -37,7 +37,7 @@ const ShareListModal: React.FC<ShareListModalProps> = ({
     const params = new URLSearchParams({
       listId,
       path: `${folderPath}/shopping-list.json`,
-      owner: 'current-user' // This would be replaced with actual user email
+      owner: 'user@example.com' // TODO: Get from auth context
     });
     return `${baseUrl}/share/accept?${params.toString()}`;
   };

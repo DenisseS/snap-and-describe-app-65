@@ -150,6 +150,33 @@ class ShoppingListService {
     
     return this.remoteProvider.mergeLocalListsWithRemote();
   }
+
+  public async addRemoteList(remoteListInfo: {
+    id: string;
+    name: string;
+    origin: 'remote';
+    syncRef: { path: string; ownerEmail?: string };
+  }): Promise<boolean> {
+    console.log('🛒 ShoppingListService: Adding remote list:', remoteListInfo);
+    
+    try {
+      // Create shopping list entry in metadata
+      const success = await this.updateShoppingList(remoteListInfo.id, {
+        name: remoteListInfo.name,
+        origin: remoteListInfo.origin,
+        syncRef: remoteListInfo.syncRef,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        itemCount: 0,
+        completedCount: 0
+      });
+
+      return success;
+    } catch (error) {
+      console.error('🛒 ShoppingListService: Error adding remote list:', error);
+      return false;
+    }
+  }
 }
 
 export default ShoppingListService;
